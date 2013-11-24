@@ -24,19 +24,11 @@
 #import "RKPathUtilities.h"
 #import "RKLog.h"
 #import "SOCKit.h"
+#import "RKRouteSet.h"
 
-@interface SOCPattern (RKTestHelpers)
-@property (nonatomic, strong, readonly) NSArray* parameters;
-@end
-
-@implementation SOCPattern (RKTestHelpers)
-
-- (NSArray *)parameters
-{
-    return _parameters;
-}
-
-@end
+#ifdef _COREDATADEFINES_H
+#import "RKManagedObjectRequestOperation.h"
+#endif
 
 @implementation RKTestHelpers
 
@@ -54,12 +46,14 @@
 + (RKRoute *)stubRouteNamed:(NSString *)routeName withPathPattern:(NSString *)pathPattern onObjectManager:(RKObjectManager *)nilOrObjectManager
 {
     RKObjectManager *objectManager = nilOrObjectManager ?: [RKObjectManager sharedManager];
-    RKRoute *route = [[RKObjectManager sharedManager].router.routeSet routeForName:routeName];
+    RKRoute *route = [objectManager.router.routeSet routeForName:routeName];
     NSAssert(route, @"Expected to retrieve a route, but got nil");
-    [[RKObjectManager sharedManager].router.routeSet removeRoute:route];
+    [objectManager.router.routeSet removeRoute:route];
     RKRoute *stubbedRoute = [RKRoute routeWithName:routeName pathPattern:pathPattern method:route.method];
-    [[RKObjectManager sharedManager].router.routeSet addRoute:stubbedRoute];
+    [objectManager.router.routeSet addRoute:stubbedRoute];
+#ifdef _COREDATADEFINES_H
     [self copyFetchRequestBlocksMatchingPathPattern:route.pathPattern toBlocksMatchingRelativeString:pathPattern onObjectManager:objectManager];
+#endif
     return stubbedRoute;
 }
 
@@ -71,10 +65,13 @@
     [objectManager.router.routeSet removeRoute:route];
     RKRoute *stubbedRoute = [RKRoute routeWithRelationshipName:relationshipName objectClass:objectClass pathPattern:pathPattern method:method];
     [objectManager.router.routeSet addRoute:stubbedRoute];
+#ifdef _COREDATADEFINES_H
     [self copyFetchRequestBlocksMatchingPathPattern:route.pathPattern toBlocksMatchingRelativeString:pathPattern onObjectManager:objectManager];
+#endif
     return stubbedRoute;
 }
 
+#ifdef _COREDATADEFINES_H
 + (void)copyFetchRequestBlocksMatchingPathPattern:(NSString *)pathPattern
                    toBlocksMatchingRelativeString:(NSString *)relativeString
                                   onObjectManager:(RKObjectManager *)nilOrObjectManager
@@ -83,7 +80,7 @@
     
     // Extract the dynamic portions of the path pattern to construct a set of parameters
     SOCPattern *pattern = [SOCPattern patternWithString:pathPattern];
-    NSArray *parameterNames = [pattern.parameters valueForKey:@"string"];
+    NSArray *parameterNames = [pattern valueForKey:@"parameters.string"];
     NSMutableDictionary *stubbedParameters = [NSMutableDictionary dictionaryWithCapacity:[parameterNames count]];
     for (NSString *parameter in parameterNames) {
         [stubbedParameters setValue:@"value" forKey:parameter];
@@ -96,7 +93,7 @@
         NSFetchRequest *fetchRequest = block(URL);
         if (fetchRequest) {
             // Add a new block that matches our stubbed path
-            [[RKObjectManager sharedManager] addFetchRequestBlock:^NSFetchRequest *(NSURL *URL) {
+            [objectManager addFetchRequestBlock:^NSFetchRequest *(NSURL *URL) {
                 // TODO: Note that relativeString does not work because NSURLRequest drops the relative parent of the URL
                 //                if ([[URL relativeString] isEqualToString:relativeString]) {
                 if ([[URL path] isEqualToString:relativeString]) {
@@ -110,6 +107,7 @@
         }
     }
 }
+#endif
 
 + (void)disableCaching
 {
